@@ -114,8 +114,8 @@ class FACLayer(nn.Module):
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
-        F = 801
-        
+        F = 161  # Fixed: Actual STFT output is 161 bins (win_size//2 + 1 = 320//2 + 1)
+
         # Encoder
         self.conv1 = FACLayer(2, 16, (2,3), (1,2), (1,0), F)
         self.conv2 = FACLayer(16, 32, (2,3), (1,2), (1,0), F)
@@ -147,7 +147,7 @@ class Net(nn.Module):
 
         self.elu = nn.ELU(inplace=True)
 
-    def forward(self, x):
+    def forward(self, x, global_step=None):
         # Encoder
         e1 = self.elu(self.bn1(self.conv1(x)[:,:,:-1]))
         e2 = self.elu(self.bn2(self.conv2(e1)[:,:,:-1]))
