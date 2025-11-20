@@ -71,8 +71,9 @@ class LossFunction(object):
         loss_mae = l1_loss_complex(est_masked, lbl_masked)
 
         # Magnitude loss (perceptually crucial)
-        est_mag = torch.sqrt(est_masked[:, 0]**2 + est_masked[:, 1]**2)
-        lbl_mag = torch.sqrt(lbl_masked[:, 0]**2 + lbl_masked[:, 1]**2)
+        # Add epsilon for numerical stability (prevents gradient explosion)
+        est_mag = torch.sqrt(est_masked[:, 0]**2 + est_masked[:, 1]**2 + 1e-8)
+        lbl_mag = torch.sqrt(lbl_masked[:, 0]**2 + lbl_masked[:, 1]**2 + 1e-8)
         loss_mag = F.mse_loss(est_mag, lbl_mag)
 
         # Combined loss: SI-SDR + Complex + Magnitude

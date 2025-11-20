@@ -335,10 +335,8 @@ class Model(object):
                 optimizer.zero_grad()
                 with torch.enable_grad():
                     est = net(feat, global_step=global_step)
-                    # Mask output for consistency (criterion also masks internally)
-                    est = est * loss_mask
 
-                # Compute loss
+                # Compute loss (criterion handles masking internally)
                 loss = criterion(est, lbl, loss_mask, n_frames, mix, n_samples)
                 
                 # Backward pass
@@ -513,8 +511,7 @@ class Model(object):
                 )
 
                 est = model(feat, global_step=global_step)
-                # Mask output for consistency (criterion also masks internally)
-                est = est * loss_mask
+                # Compute loss (criterion handles masking internally)
                 loss = criterion(est, lbl, loss_mask, n_frames, mix, n_samples)
 
                 if isinstance(n_frames, torch.Tensor):
