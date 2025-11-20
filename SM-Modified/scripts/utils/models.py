@@ -317,7 +317,12 @@ class Model(object):
                     n_frames_sum = sum(n_frames)
 
                 iter_start_time = timeit.default_timer()
-                
+
+                # RMS Normalization (preserves SNR, stabilizes training)
+                c = torch.sqrt(mix.size(-1) / (torch.sum(mix**2.0, dim=-1, keepdim=True) + 1e-8))
+                mix = mix * c
+                sph = sph * c
+
                 # Prepare features and labels
                 feat, lbl = feeder(mix, sph)
                 loss_mask = lossMask(
@@ -330,7 +335,9 @@ class Model(object):
                 optimizer.zero_grad()
                 with torch.enable_grad():
                     est = net(feat, global_step=global_step)
-                
+                    # Mask output for consistency (criterion also masks internally)
+                    est = est * loss_mask
+
                 # Compute loss
                 loss = criterion(est, lbl, loss_mask, n_frames, mix, n_samples)
                 
@@ -493,14 +500,21 @@ class Model(object):
                 
                 n_frames = countFrames(n_samples, self.win_size, self.hop_size)
 
+                # RMS Normalization (same as training for consistency)
+                c = torch.sqrt(mix.size(-1) / (torch.sum(mix**2.0, dim=-1, keepdim=True) + 1e-8))
+                mix = mix * c
+                sph = sph * c
+
                 feat, lbl = feeder(mix, sph)
                 loss_mask = lossMask(
-                    shape=lbl.shape, 
-                    n_frames=n_frames, 
+                    shape=lbl.shape,
+                    n_frames=n_frames,
                     device=self.device
                 )
-                
+
                 est = model(feat, global_step=global_step)
+                # Mask output for consistency (criterion also masks internally)
+                est = est * loss_mask
                 loss = criterion(est, lbl, loss_mask, n_frames, mix, n_samples)
 
                 if isinstance(n_frames, torch.Tensor):
@@ -635,8 +649,10 @@ class Model(object):
                 
                 feat, lbl = feeder(mix, sph)
                 loss_mask = lossMask(shape=lbl.shape, n_frames=n_frames, device=self.device)
-                
+
                 est = net(feat, global_step=None)
+                # FIX: Mask output to match training behavior (prevents noise in padded regions)
+                est = est * loss_mask
                 loss = criterion(est, lbl, loss_mask, n_frames, mix, n_samples)
                 
                 if isinstance(n_frames, torch.Tensor):
