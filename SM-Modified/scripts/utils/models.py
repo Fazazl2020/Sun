@@ -87,6 +87,7 @@ class Model(object):
 
         self.win_size = int(self.win_len * self.sample_rate)
         self.hop_size = int(self.hop_len * self.sample_rate)
+        self.F = self.win_size // 2 + 1  # Number of frequency bins
     
     def train(self):
         """
@@ -198,9 +199,10 @@ class Model(object):
         print("\n" + "="*70)
         print("STEP 4: INITIALIZING MODEL")
         print("="*70)
-        
-        # Create network
-        net = Net()
+
+        # Create network with correct frequency bins
+        logger.info(f'STFT config: win_size={self.win_size}, hop_size={self.hop_size}, F={self.F}')
+        net = Net(F=self.F)
         logger.info(f'Model summary:\n{net}')
 
         net = net.to(self.device)
@@ -567,9 +569,10 @@ class Model(object):
         print("\n" + "="*70)
         print("STEP 3: LOADING MODEL")
         print("="*70)
-        
-        # Create network
-        net = Net()
+
+        # Create network with correct frequency bins
+        logger.info(f'STFT config: win_size={self.win_size}, hop_size={self.hop_size}, F={self.F}')
+        net = Net(F=self.F)
         net = net.to(self.device)
 
         param_count = numParams(net)
