@@ -133,17 +133,17 @@ class Net(nn.Module):
         self.de2 = nn.ConvTranspose2d(64, 16, (2,3), (1,2), (1,0), output_padding=(0,1))
         self.de1 = nn.ConvTranspose2d(32, 2, (2,3), (1,2), (1,0))
 
-        # Batch Norms
-        self.bn1 = nn.BatchNorm2d(16)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.bn3 = nn.BatchNorm2d(64)
-        self.bn4 = nn.BatchNorm2d(128)
-        self.bn5 = nn.BatchNorm2d(256)
-        self.bn5_t = nn.BatchNorm2d(128)
-        self.bn4_t = nn.BatchNorm2d(64)
-        self.bn3_t = nn.BatchNorm2d(32)
-        self.bn2_t = nn.BatchNorm2d(16)
-        self.bn1_t = nn.BatchNorm2d(2)
+        # Instance Norms (replaced BatchNorm for variable-length stability)
+        self.bn1 = nn.InstanceNorm2d(16, affine=True)
+        self.bn2 = nn.InstanceNorm2d(32, affine=True)
+        self.bn3 = nn.InstanceNorm2d(64, affine=True)
+        self.bn4 = nn.InstanceNorm2d(128, affine=True)
+        self.bn5 = nn.InstanceNorm2d(256, affine=True)
+        self.bn5_t = nn.InstanceNorm2d(128, affine=True)
+        self.bn4_t = nn.InstanceNorm2d(64, affine=True)
+        self.bn3_t = nn.InstanceNorm2d(32, affine=True)
+        self.bn2_t = nn.InstanceNorm2d(16, affine=True)
+        self.bn1_t = nn.InstanceNorm2d(2, affine=True)
 
         self.elu = nn.ELU(inplace=True)
 
@@ -261,8 +261,8 @@ class AIA_Transformer(nn.Module):
         self.row_trans = Hybrid_SelfAttention_MRHA3(input_size//2)
         self.col_trans = Hybrid_SelfAttention_MRHA3(input_size//2)
         
-        self.row_norm = nn.BatchNorm2d(input_size//2)
-        self.col_norm = nn.BatchNorm2d(input_size//2)
+        self.row_norm = nn.InstanceNorm2d(input_size//2, affine=True)
+        self.col_norm = nn.InstanceNorm2d(input_size//2, affine=True)
         
         self.k1 = nn.Parameter(torch.ones(1))
         self.k2 = nn.Parameter(torch.ones(1))

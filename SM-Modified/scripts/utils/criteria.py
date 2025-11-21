@@ -1,11 +1,13 @@
 """
-Fixed Weights Loss Function
-============================
-Ablation Study #1: Weight Balance Fix
+Stage 1 Loss Function
+=====================
+SI-SDR + Complex L1 + Magnitude Loss
 
-Loss: SI-SDR + 10.0 * L1(R,I)
+Loss: SI-SDR + 10.0 * L1(R,I) + 3.0 * MSE(Magnitude)
 
-Expected Performance: PESQ 2.90-3.10 (+0.10 from baseline)
+Changes:
+- InstanceNorm for variable-length stability
+- Magnitude loss to help spectral reconstruction
 """
 
 import torch
@@ -43,11 +45,19 @@ def l1_loss_complex(est, ref):
     return F.l1_loss(est[:, 0], ref[:, 0]) + F.l1_loss(est[:, 1], ref[:, 1])
 
 
+def magnitude_mse_loss(est, ref, eps=1e-8):
+    """MSE loss on magnitude spectrum."""
+    est_mag = torch.sqrt(est[:, 0]**2 + est[:, 1]**2 + eps)
+    ref_mag = torch.sqrt(ref[:, 0]**2 + ref[:, 1]**2 + eps)
+    return F.mse_loss(est_mag, ref_mag)
+
+
 class LossFunction(object):
     """
-    Fixed Weights Loss Function
-    
-    Weight increased from 0.5 to 10.0 to balance gradient contributions.
+    Stage 1 Loss Function
+
+    SI-SDR (time-domain) + L1 (complex) + MSE (magnitude)
+    Weights: SI-SDR dominant, L1=10.0, Magnitude=3.0
     """
     
     def __init__(self, device, win_size=320, hop_size=160):
@@ -70,5 +80,8 @@ class LossFunction(object):
         # Complex component loss
         loss_mae = l1_loss_complex(est_masked, lbl_masked)
 
-        # Fixed weight: 10.0 instead of 0.5
-        return loss_sisdr + 10.0 * loss_mae
+        # Magnitude loss (helps spectral reconstruction)
+        loss_mag = magnitude_mse_loss(est_masked, lbl_masked)
+
+        # Combined loss: SI-SDR dominant + L1 + Magnitude
+        return loss_sisdr + 10.0 * loss_mae + 3.0 * loss_mag
