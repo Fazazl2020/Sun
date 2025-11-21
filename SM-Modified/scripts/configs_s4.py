@@ -1,41 +1,19 @@
 """
 configs_s4.py - Experiment S4: Full Enhancement
 ===============================================
-InstanceNorm + Compressed MagLoss (mag^0.3), F=201
+F=201, Compressed Magnitude Loss (mag^0.3)
 
-Loss: SI-SDR + 10.0 * L1(R,I) + 3.0 * MSE(Magnitude^0.3)
-
-CHANGES FROM S1:
-1. Higher STFT resolution: F=201 (from S2)
-2. Compressed magnitude loss: mag^0.3 (from S3)
-
-This combines both enhancements to test their combined effect.
-
-USAGE:
-1. Copy this file to configs.py: cp configs_s4.py configs.py
-2. Update CHECKPOINT_ROOT to your experiment directory
-3. Run: python train.py
+USAGE: cp configs_s4.py configs.py && python train.py
+ALSO NEED: cp networks_s2_s4.py utils/networks.py
+ALSO NEED: cp criteria_s3_s4.py utils/criteria.py
 """
 
 import os
-from pathlib import Path
-
-# ============================================================
-# ==================== EXPERIMENT INFO =======================
-# ============================================================
 
 EXPERIMENT_NAME = 'S4-Full'
-EXPERIMENT_DESC = 'InstanceNorm + Compressed MagLoss (mag^0.3), F=201'
 
-# ============================================================
-# ==================== USER CONFIGURATION ====================
-# ============================================================
-
-# ==================== 1. DATASET PATHS ====================
-
+# Dataset
 DATASET_ROOT = '/gdata/fewahab/data/Voicebank+demand/My_train_valid_test'
-
-# FIXED SUBDIRECTORIES
 TRAIN_CLEAN_SUBDIR = 'Train/clean_train'
 TRAIN_NOISY_SUBDIR = 'Train/noisy_train'
 VALID_CLEAN_SUBDIR = 'valid/clean_valid'
@@ -43,34 +21,21 @@ VALID_NOISY_SUBDIR = 'valid/noisy_valid'
 TEST_CLEAN_SUBDIR = 'Test/clean_test'
 TEST_NOISY_SUBDIR = 'Test/noisy_test'
 
-
-# ==================== 2. CHECKPOINT PATHS ====================
-# IMPORTANT: Change this for each experiment to avoid file collision!
-
+# Checkpoints - UPDATE THIS
 CHECKPOINT_ROOT = '/ghome/fewahab/Sun-Models/Exp-S4/ckpt'
-
-
-# ==================== 3. OUTPUT PATHS ====================
-
 ESTIMATES_ROOT = '/gdata/fewahab/Sun-Models/Exp-S4/estimates'
 
-
-# ==================== 4. MODEL CONFIGURATION ====================
-
+# Model Config - S4: F=201, compressed mag loss
 MODEL_CONFIG = {
     'in_norm': False,
     'sample_rate': 16000,
-    # S4: Higher STFT resolution (F=201) - from S2
     'win_len': 0.025,       # 400 samples -> F=201
     'hop_len': 0.00625,     # 100 samples
-    # S4: Compressed magnitude loss (mag^0.3) - from S3
     'use_compressed_mag': True,
     'mag_compression_power': 0.3,
 }
 
-
-# ==================== 5. TRAINING CONFIGURATION ====================
-
+# Training Config
 TRAINING_CONFIG = {
     'gpu_ids': '0',
     'unit': 'utt',
@@ -92,19 +57,7 @@ TRAINING_CONFIG = {
     'resume_model': '',
 }
 
-
-# ==================== 6. TESTING CONFIGURATION ====================
-
-TESTING_CONFIG = {
-    'batch_size': 1,
-    'num_workers': 2,
-    'write_ideal': False,
-}
-
-
-# ============================================================
-# ============ END OF USER CONFIGURATION =====================
-# ============================================================
+TESTING_CONFIG = {'batch_size': 1, 'num_workers': 2, 'write_ideal': False}
 
 # Derived paths
 TRAIN_CLEAN_DIR = os.path.join(DATASET_ROOT, TRAIN_CLEAN_SUBDIR)
@@ -160,117 +113,30 @@ test_conf = {
 
 def validate_path(path, path_type="directory"):
     if not os.path.exists(path):
-        raise FileNotFoundError(f"{path_type.capitalize()} not found: {path}")
+        raise FileNotFoundError(f"{path_type} not found: {path}")
     return path
 
 def validate_data_dirs(mode='train'):
-    print("\n" + "="*60)
-    print("VALIDATING DATA DIRECTORIES")
-    print("="*60)
-
     if mode in ['train', 'all']:
-        print(f"\nChecking training data...")
-        print(f"  Clean: {TRAIN_CLEAN_DIR}")
-        print(f"  Noisy: {TRAIN_NOISY_DIR}")
-
-        validate_path(TRAIN_CLEAN_DIR, "Training clean directory")
-        validate_path(TRAIN_NOISY_DIR, "Training noisy directory")
-
-        train_clean_files = [f for f in os.listdir(TRAIN_CLEAN_DIR) if f.endswith('.wav')]
-        train_noisy_files = [f for f in os.listdir(TRAIN_NOISY_DIR) if f.endswith('.wav')]
-
-        if len(train_clean_files) == 0:
-            raise ValueError(f"No WAV files found in {TRAIN_CLEAN_DIR}")
-        if len(train_noisy_files) == 0:
-            raise ValueError(f"No WAV files found in {TRAIN_NOISY_DIR}")
-
-        print(f"  Found {len(train_clean_files)} clean files")
-        print(f"  Found {len(train_noisy_files)} noisy files")
-
+        validate_path(TRAIN_CLEAN_DIR)
+        validate_path(TRAIN_NOISY_DIR)
     if mode in ['valid', 'train', 'all']:
-        print(f"\nChecking validation data...")
-        print(f"  Clean: {VALID_CLEAN_DIR}")
-        print(f"  Noisy: {VALID_NOISY_DIR}")
-
-        validate_path(VALID_CLEAN_DIR, "Validation clean directory")
-        validate_path(VALID_NOISY_DIR, "Validation noisy directory")
-
-        valid_clean_files = [f for f in os.listdir(VALID_CLEAN_DIR) if f.endswith('.wav')]
-        valid_noisy_files = [f for f in os.listdir(VALID_NOISY_DIR) if f.endswith('.wav')]
-
-        if len(valid_clean_files) == 0:
-            raise ValueError(f"No WAV files found in {VALID_CLEAN_DIR}")
-        if len(valid_noisy_files) == 0:
-            raise ValueError(f"No WAV files found in {VALID_NOISY_DIR}")
-
-        print(f"  Found {len(valid_clean_files)} clean files")
-        print(f"  Found {len(valid_noisy_files)} noisy files")
-
+        validate_path(VALID_CLEAN_DIR)
+        validate_path(VALID_NOISY_DIR)
     if mode in ['test', 'all']:
-        print(f"\nChecking test data...")
-        print(f"  Clean: {TEST_CLEAN_DIR}")
-        print(f"  Noisy: {TEST_NOISY_DIR}")
-
-        validate_path(TEST_CLEAN_DIR, "Test clean directory")
-        validate_path(TEST_NOISY_DIR, "Test noisy directory")
-
-        test_clean_files = [f for f in os.listdir(TEST_CLEAN_DIR) if f.endswith('.wav')]
-        test_noisy_files = [f for f in os.listdir(TEST_NOISY_DIR) if f.endswith('.wav')]
-
-        if len(test_clean_files) == 0:
-            raise ValueError(f"No WAV files found in {TEST_CLEAN_DIR}")
-        if len(test_noisy_files) == 0:
-            raise ValueError(f"No WAV files found in {TEST_NOISY_DIR}")
-
-        print(f"  Found {len(test_clean_files)} clean files")
-        print(f"  Found {len(test_noisy_files)} noisy files")
-
-    print("\n" + "="*60)
-    print("ALL DATA DIRECTORIES VALIDATED SUCCESSFULLY!")
-    print("="*60 + "\n")
+        validate_path(TEST_CLEAN_DIR)
+        validate_path(TEST_NOISY_DIR)
 
 def check_pytorch_version():
-    try:
-        import torch
-        version = torch.__version__.split('+')[0]
-        major, minor, patch = map(int, version.split('.'))
-        persistent_workers_supported = (major > 1) or (major == 1 and minor >= 7)
-        return {
-            'version': torch.__version__,
-            'persistent_workers': persistent_workers_supported,
-            'cuda_available': torch.cuda.is_available()
-        }
-    except ImportError:
-        raise ImportError("PyTorch is not installed!")
+    import torch
+    return {'version': torch.__version__, 'cuda_available': torch.cuda.is_available()}
 
 def print_config():
-    pytorch_info = check_pytorch_version()
-
-    # Compute F for display
-    sample_rate = MODEL_CONFIG['sample_rate']
-    win_size = int(MODEL_CONFIG['win_len'] * sample_rate)
-    hop_size = int(MODEL_CONFIG['hop_len'] * sample_rate)
-    F = win_size // 2 + 1
-
-    print("\n" + "="*70)
-    print("CONFIGURATION LOADED")
-    print("="*70)
-    print(f"\n** EXPERIMENT: {EXPERIMENT_NAME} **")
-    print(f"   {EXPERIMENT_DESC}")
-    print(f"\n   STFT: win={win_size}, hop={hop_size}, F={F}")
-    print(f"   Compressed Mag Loss: {MODEL_CONFIG['use_compressed_mag']} (power={MODEL_CONFIG['mag_compression_power']})")
-    print(f"\nPYTORCH INFO:")
-    print(f"  Version: {pytorch_info['version']}")
-    print(f"  CUDA available: {pytorch_info['cuda_available']}")
-    print(f"\nDIRECTORIES:")
-    print(f"  Dataset:     {DATASET_ROOT}")
-    print(f"  Checkpoints: {CHECKPOINT_ROOT}")
-    print(f"  Outputs:     {ESTIMATES_ROOT}")
-    print(f"\nTRAINING CONFIG:")
-    print(f"  GPU: {TRAINING_CONFIG['gpu_ids']}")
-    print(f"  Batch size: {TRAINING_CONFIG['batch_size']}")
-    print(f"  Max length: {TRAINING_CONFIG['max_length_seconds']}s")
-    print(f"  Max epochs: {TRAINING_CONFIG['max_n_epochs']}")
-    print("="*70 + "\n")
+    print(f"\n{'='*60}")
+    print(f"EXPERIMENT: {EXPERIMENT_NAME}")
+    print(f"STFT: F=201 (win=400, hop=100)")
+    print(f"Mag Loss: Compressed (mag^0.3)")
+    print(f"Checkpoint: {CHECKPOINT_ROOT}")
+    print(f"{'='*60}\n")
 
 print_config()
