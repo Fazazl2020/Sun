@@ -1,9 +1,63 @@
 """
 configs.py - Configuration File
+
+EXPERIMENT CONFIGURATIONS:
+- S1: Stage1 Baseline (InstanceNorm + MagLoss 3.0, F=161)
+- S2: Stage1 + STFT F=201 (higher frequency resolution)
+- S3: Stage1 + Compressed Magnitude Loss (mag^0.3 weighting)
+- S4: Stage1 + F=201 + Compressed Magnitude Loss (full)
+
+To run different experiments, change EXPERIMENT below.
 """
 
 import os
 from pathlib import Path
+
+# ============================================================
+# ==================== EXPERIMENT SELECTION ==================
+# ============================================================
+
+# Choose experiment: 'S1', 'S2', 'S3', or 'S4'
+EXPERIMENT = 'S1'
+
+# Experiment definitions
+EXPERIMENTS = {
+    'S1': {
+        'name': 'Stage1-Baseline',
+        'description': 'InstanceNorm + MagLoss(3.0), F=161',
+        'stft_win': 0.020,      # 320 samples -> F=161
+        'stft_hop': 0.010,      # 160 samples
+        'use_compressed_mag': False,
+        'mag_compression_power': 0.3,
+    },
+    'S2': {
+        'name': 'Stage1-STFT201',
+        'description': 'InstanceNorm + MagLoss(3.0), F=201 (higher resolution)',
+        'stft_win': 0.025,      # 400 samples -> F=201
+        'stft_hop': 0.00625,    # 100 samples
+        'use_compressed_mag': False,
+        'mag_compression_power': 0.3,
+    },
+    'S3': {
+        'name': 'Stage1-CompMag',
+        'description': 'InstanceNorm + Compressed MagLoss (mag^0.3), F=161',
+        'stft_win': 0.020,      # 320 samples -> F=161
+        'stft_hop': 0.010,      # 160 samples
+        'use_compressed_mag': True,
+        'mag_compression_power': 0.3,
+    },
+    'S4': {
+        'name': 'Stage1-Full',
+        'description': 'InstanceNorm + Compressed MagLoss, F=201',
+        'stft_win': 0.025,      # 400 samples -> F=201
+        'stft_hop': 0.00625,    # 100 samples
+        'use_compressed_mag': True,
+        'mag_compression_power': 0.3,
+    },
+}
+
+# Get current experiment config
+EXP_CONFIG = EXPERIMENTS[EXPERIMENT]
 
 # ============================================================
 # ==================== USER CONFIGURATION ====================
@@ -37,8 +91,11 @@ ESTIMATES_ROOT = '/gdata/fewahab/Sun-Models/Mod-3/T71a1/estimates_MA'
 MODEL_CONFIG = {
     'in_norm': False,
     'sample_rate': 16000,
-    'win_len': 0.020,
-    'hop_len': 0.010
+    'win_len': EXP_CONFIG['stft_win'],
+    'hop_len': EXP_CONFIG['stft_hop'],
+    # Experiment-specific loss settings
+    'use_compressed_mag': EXP_CONFIG['use_compressed_mag'],
+    'mag_compression_power': EXP_CONFIG['mag_compression_power'],
 }
 
 
@@ -218,10 +275,12 @@ def check_pytorch_version():
 
 def print_config():
     pytorch_info = check_pytorch_version()
-    
+
     print("\n" + "="*70)
     print("CONFIGURATION LOADED")
     print("="*70)
+    print(f"\n** EXPERIMENT: {EXPERIMENT} - {EXP_CONFIG['name']} **")
+    print(f"   {EXP_CONFIG['description']}")
     print(f"\n?? PYTORCH INFO:")
     print(f"  Version: {pytorch_info['version']}")
     print(f"  CUDA available: {pytorch_info['cuda_available']}")

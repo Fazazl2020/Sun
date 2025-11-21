@@ -112,9 +112,15 @@ class FACLayer(nn.Module):
         return self.conv(X)
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, F=161):
+        """
+        Args:
+            F: Number of frequency bins (STFT output size = win_size//2 + 1)
+               F=161 for win=320 (default, Stage 1)
+               F=201 for win=400 (Stage 2+)
+        """
         super().__init__()
-        F = 161  # Fixed: Actual STFT output is 161 bins (win_size//2 + 1 = 320//2 + 1)
+        self.F = F
 
         # Encoder
         self.conv1 = FACLayer(2, 16, (2,3), (1,2), (1,0), F)
@@ -126,9 +132,14 @@ class Net(nn.Module):
         # AIA Module
         self.m1 = AIA_Transformer(256, 256)
 
-        # Decoder
+        # Decoder - output_padding depends on F to match skip connections
+        # Dimension analysis:
+        #   F=161: e3=19, de4 base output=23, need padding=0 (matches via F.pad)
+        #   F=201: e3=24, de4 base output=23, need output_padding=(0,1) to get 24
+        de4_output_padding = (0, 1) if F == 201 else (0, 0)
+
         self.de5 = nn.ConvTranspose2d(512, 128, (2,3), (1,2), (1,0))
-        self.de4 = nn.ConvTranspose2d(256, 64, (2,3), (1,2), (1,0))
+        self.de4 = nn.ConvTranspose2d(256, 64, (2,3), (1,2), (1,0), output_padding=de4_output_padding)
         self.de3 = nn.ConvTranspose2d(128, 32, (2,3), (1,2), (1,0))
         self.de2 = nn.ConvTranspose2d(64, 16, (2,3), (1,2), (1,0), output_padding=(0,1))
         self.de1 = nn.ConvTranspose2d(32, 2, (2,3), (1,2), (1,0))
