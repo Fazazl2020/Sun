@@ -70,11 +70,5 @@ class LossFunction(object):
         # Complex component loss
         loss_mae = l1_loss_complex(est_masked, lbl_masked)
 
-        # Magnitude loss (perceptually crucial)
-        # Add epsilon for numerical stability (prevents gradient explosion)
-        est_mag = torch.sqrt(est_masked[:, 0]**2 + est_masked[:, 1]**2 + 1e-8)
-        lbl_mag = torch.sqrt(lbl_masked[:, 0]**2 + lbl_masked[:, 1]**2 + 1e-8)
-        loss_mag = F.mse_loss(est_mag, lbl_mag)
-
-        # Combined loss: SI-SDR + Complex + Magnitude
-        return loss_sisdr + 10.0 * loss_mae + 30.0 * loss_mag
+        # Fixed weight: 10.0 instead of 0.5
+        return loss_sisdr + 10.0 * loss_mae
