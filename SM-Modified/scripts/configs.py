@@ -120,6 +120,11 @@ TRAINING_CONFIG = {
     'loss_log': 'loss.txt',
     'time_log': '',
     'resume_model': '',
+
+    # PESQ Validation Settings
+    'pesq_eval_interval': 10,       # Evaluate PESQ every N epochs (0 = disabled)
+    'pesq_log': 'pesq_log.txt',     # PESQ results log file
+    'save_best_pesq_model': True,   # Save separate best_pesq.pt model
 }
 
 
@@ -179,6 +184,10 @@ train_conf = {
     'loss_log': TRAINING_CONFIG['loss_log'],
     'time_log': TRAINING_CONFIG['time_log'],
     'resume_model': TRAINING_CONFIG['resume_model'],
+    # PESQ validation settings
+    'pesq_eval_interval': TRAINING_CONFIG['pesq_eval_interval'],
+    'pesq_log': TRAINING_CONFIG['pesq_log'],
+    'save_best_pesq_model': TRAINING_CONFIG['save_best_pesq_model'],
 }
 
 test_conf = {

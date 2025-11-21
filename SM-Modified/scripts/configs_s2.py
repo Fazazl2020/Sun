@@ -11,18 +11,31 @@ import os
 
 EXPERIMENT_NAME = 'S2-STFT201'
 
+# ============================================================
+# ==================== EASY-TO-MODIFY SETTINGS ===============
+# ============================================================
+
+# PESQ Validation Settings (modify these as needed)
+PESQ_EVAL_INTERVAL = 10       # Evaluate PESQ every N epochs (0 = disabled)
+PESQ_LOG = 'pesq_log.txt'     # PESQ results log file
+SAVE_BEST_PESQ_MODEL = True   # Save separate best_pesq.pt model
+
 # Dataset
 DATASET_ROOT = '/gdata/fewahab/data/Voicebank+demand/My_train_valid_test'
-TRAIN_CLEAN_SUBDIR = 'Train/clean_train'
-TRAIN_NOISY_SUBDIR = 'Train/noisy_train'
-VALID_CLEAN_SUBDIR = 'valid/clean_valid'
-VALID_NOISY_SUBDIR = 'valid/noisy_valid'
-TEST_CLEAN_SUBDIR = 'Test/clean_test'
-TEST_NOISY_SUBDIR = 'Test/noisy_test'
+TRAIN_CLEAN_SUBDIR = 'train/clean'
+TRAIN_NOISY_SUBDIR = 'train/noisy'
+VALID_CLEAN_SUBDIR = 'valid/clean'
+VALID_NOISY_SUBDIR = 'valid/noisy'
+TEST_CLEAN_SUBDIR = 'test/clean'
+TEST_NOISY_SUBDIR = 'test/noisy'
 
-# Checkpoints - UPDATE THIS
-CHECKPOINT_ROOT = '/ghome/fewahab/Sun-Models/Exp-S2/ckpt'
-ESTIMATES_ROOT = '/gdata/fewahab/Sun-Models/Exp-S2/estimates'
+# Checkpoints - UPDATE THIS FOR YOUR EXPERIMENT
+CHECKPOINT_ROOT = '/ghome/fewahab/My_5th_pap/Ab3/N13/scripts/ckpt'
+ESTIMATES_ROOT = '/gdata/fewahab/My_5th_pap/Ab3/N13/scripts/estimates'
+
+# ============================================================
+# ==================== MODEL CONFIGURATION ===================
+# ============================================================
 
 # Model Config - S2: F=201, standard mag loss
 MODEL_CONFIG = {
@@ -54,11 +67,22 @@ TRAINING_CONFIG = {
     'loss_log': 'loss.txt',
     'time_log': '',
     'resume_model': '',
+    # PESQ Validation Settings (from top of file)
+    'pesq_eval_interval': PESQ_EVAL_INTERVAL,
+    'pesq_log': PESQ_LOG,
+    'save_best_pesq_model': SAVE_BEST_PESQ_MODEL,
 }
 
-TESTING_CONFIG = {'batch_size': 1, 'num_workers': 2, 'write_ideal': False}
+TESTING_CONFIG = {
+    'batch_size': 1,
+    'num_workers': 2,
+    'write_ideal': False,
+}
 
-# Derived paths
+# ============================================================
+# ==================== DERIVED PATHS =========================
+# ============================================================
+
 TRAIN_CLEAN_DIR = os.path.join(DATASET_ROOT, TRAIN_CLEAN_SUBDIR)
 TRAIN_NOISY_DIR = os.path.join(DATASET_ROOT, TRAIN_NOISY_SUBDIR)
 VALID_CLEAN_DIR = os.path.join(DATASET_ROOT, VALID_CLEAN_SUBDIR)
@@ -101,6 +125,10 @@ train_conf = {
     'loss_log': TRAINING_CONFIG['loss_log'],
     'time_log': TRAINING_CONFIG['time_log'],
     'resume_model': TRAINING_CONFIG['resume_model'],
+    # PESQ validation settings
+    'pesq_eval_interval': TRAINING_CONFIG['pesq_eval_interval'],
+    'pesq_log': TRAINING_CONFIG['pesq_log'],
+    'save_best_pesq_model': TRAINING_CONFIG['save_best_pesq_model'],
 }
 
 test_conf = {
@@ -135,6 +163,7 @@ def print_config():
     print(f"EXPERIMENT: {EXPERIMENT_NAME}")
     print(f"STFT: F=201 (win=400, hop=100)")
     print(f"Mag Loss: Standard")
+    print(f"PESQ Eval: Every {PESQ_EVAL_INTERVAL} epochs")
     print(f"Checkpoint: {CHECKPOINT_ROOT}")
     print(f"{'='*60}\n")
 
