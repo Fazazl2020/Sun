@@ -1,6 +1,7 @@
 """
-model.py - PRODUCTION-READY VERSION WITH PADDING FIX
+model.py - PRODUCTION-READY VERSION WITH PADDING FIX + PESQ VALIDATION
 Perfect integration with data_utils.py - All bugs fixed
+Includes PESQ validation on full validation set every N epochs
 """
 
 import os
@@ -12,6 +13,14 @@ import torch
 from torch.nn import DataParallel
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam, lr_scheduler
+
+# PESQ for perceptual quality evaluation
+try:
+    from pesq import pesq
+    PESQ_AVAILABLE = True
+except ImportError:
+    PESQ_AVAILABLE = False
+    print("WARNING: pesq not installed. Run 'pip install pesq' to enable PESQ validation.")
 
 from configs import (
     exp_conf, train_conf, test_conf,
@@ -57,17 +66,29 @@ class CheckPoint(object):
 def lossLog(log_file, ckpt, logging_period):
     """Write loss to CSV file"""
     ckpt_info = ckpt.ckpt_info
-    
+
     if not os.path.isfile(log_file):
         with open(log_file, 'w') as f:
             f.write('epoch, iter, tr_loss, cv_loss\n')
-    
+
     with open(log_file, 'a') as f:
         f.write('{}, {}, {:.4f}, {:.4f}\n'.format(
             ckpt_info['cur_epoch'] + 1,
             ckpt_info['cur_iter'] + 1,
             ckpt_info['tr_loss'],
             ckpt_info['cv_loss']
+        ))
+
+
+def pesqLog(log_file, epoch, avg_pesq, best_pesq, n_samples, eval_time):
+    """Write PESQ validation results to log file"""
+    if not os.path.isfile(log_file):
+        with open(log_file, 'w') as f:
+            f.write('epoch, avg_pesq, best_pesq, n_samples, eval_time_sec\n')
+
+    with open(log_file, 'a') as f:
+        f.write('{}, {:.4f}, {:.4f}, {}, {:.1f}\n'.format(
+            epoch, avg_pesq, best_pesq, n_samples, eval_time
         ))
 
 
@@ -123,7 +144,12 @@ class Model(object):
         self.segment_size = train_conf['segment_size']
         self.segment_shift = train_conf['segment_shift']
         self.max_length_seconds = train_conf['max_length_seconds']
-        
+
+        # PESQ validation settings
+        self.pesq_eval_interval = train_conf.get('pesq_eval_interval', 10)
+        self.pesq_log = train_conf.get('pesq_log', 'pesq_log.txt')
+        self.save_best_pesq_model = train_conf.get('save_best_pesq_model', True)
+
         # Setup device
         self.gpu_ids = tuple(map(int, train_conf['gpu_ids'].split(',')))
         if len(self.gpu_ids) == 1 and self.gpu_ids[0] == -1:
@@ -214,8 +240,9 @@ class Model(object):
         param_count = numParams(net)
         logger.info(f'Trainable parameters: {param_count:,d} -> {param_count*32/8/(2**20):.2f} MB\n')
 
-        # Network feeder
+        # Network feeder and resynthesizer (for PESQ validation)
         feeder = NetFeeder(self.device, self.win_size, self.hop_size)
+        resynthesizer = Resynthesizer(self.device, self.win_size, self.hop_size)
 
         # Loss and optimizer
         criterion = LossFunction(
@@ -246,11 +273,13 @@ class Model(object):
             'tr_loss': None,
             'cv_loss': None,
             'best_loss': float('inf'),
+            'best_pesq': -1.0,  # Track best PESQ score
             'global_step': 0,
             'min_lr_epoch_count': 0
         }
         global_step = 0
         min_lr_epoch_count = 0
+        best_pesq = -1.0
         
         # Resume training if needed
         if self.resume_model:
@@ -283,9 +312,11 @@ class Model(object):
             ckpt_info = ckpt.ckpt_info
             global_step = ckpt_info.get('global_step', 0)
             min_lr_epoch_count = ckpt_info.get('min_lr_epoch_count', 0)
-            
+            best_pesq = ckpt_info.get('best_pesq', -1.0)
+
             logger.info(f'Resumed from epoch {ckpt_info["cur_epoch"] + 1}')
             logger.info(f'Best CV loss: {ckpt_info["best_loss"]:.4f}')
+            logger.info(f'Best PESQ: {best_pesq:.4f}')
             logger.info('='*70 + '\n')
         
         print("\n" + "="*70)
@@ -441,7 +472,57 @@ class Model(object):
             # Write to loss log
             ckpt = CheckPoint(ckpt_info, None, None, None)
             lossLog(os.path.join(self.ckpt_dir, self.loss_log), ckpt, self.logging_period)
-            
+
+            # PESQ Validation (every N epochs)
+            current_epoch = ckpt_info['cur_epoch'] + 1  # 1-indexed for display
+            if (self.pesq_eval_interval > 0 and
+                current_epoch % self.pesq_eval_interval == 0):
+
+                logger.info('='*70)
+                logger.info(f'PESQ VALIDATION - Epoch {current_epoch}')
+                logger.info('='*70)
+
+                pesq_start_time = timeit.default_timer()
+                avg_pesq = self.validate_pesq(
+                    net, valid_loader, feeder, resynthesizer, logger
+                )
+                pesq_eval_time = timeit.default_timer() - pesq_start_time
+
+                # Check if best PESQ
+                is_best_pesq = avg_pesq > best_pesq
+                if is_best_pesq:
+                    improvement = avg_pesq - best_pesq
+                    logger.info(f'NEW BEST PESQ! {best_pesq:.4f} -> {avg_pesq:.4f} (+{improvement:.4f})')
+                    best_pesq = avg_pesq
+                    ckpt_info['best_pesq'] = best_pesq
+
+                    # Save best PESQ model
+                    if self.save_best_pesq_model:
+                        model_path = os.path.join(self.ckpt_dir, 'models')
+                        pesq_model_path = os.path.join(model_path, 'best_pesq.pt')
+                        if len(self.gpu_ids) > 1:
+                            pesq_ckpt = CheckPoint(
+                                ckpt_info, net.module.state_dict(),
+                                optimizer.state_dict(), scheduler.state_dict()
+                            )
+                        else:
+                            pesq_ckpt = CheckPoint(
+                                ckpt_info, net.state_dict(),
+                                optimizer.state_dict(), scheduler.state_dict()
+                            )
+                        torch.save(pesq_ckpt, pesq_model_path)
+                        logger.info(f'Saved best PESQ model to: {pesq_model_path}')
+
+                # Log PESQ results
+                pesqLog(
+                    os.path.join(self.ckpt_dir, self.pesq_log),
+                    current_epoch, avg_pesq, best_pesq,
+                    len(valid_loader.dataset), pesq_eval_time
+                )
+                logger.info(f'PESQ: {avg_pesq:.4f} | Best PESQ: {best_pesq:.4f} | '
+                           f'Time: {pesq_eval_time:.1f}s')
+                logger.info('='*70 + '\n')
+
             # Next epoch
             ckpt_info['cur_epoch'] += 1
         
@@ -449,8 +530,10 @@ class Model(object):
         logger.info('TRAINING COMPLETED')
         logger.info(f'Total epochs: {ckpt_info["cur_epoch"]}')
         logger.info(f'Best CV loss: {ckpt_info["best_loss"]:.4f}')
+        if best_pesq > 0:
+            logger.info(f'Best PESQ: {best_pesq:.4f}')
         logger.info('='*70)
-        
+
         return
     
     def _save_checkpoint(self, ckpt_info, net, optimizer, scheduler, is_best):
@@ -516,7 +599,77 @@ class Model(object):
         
         avg_cv_loss = accu_cv_loss / accu_n_frames
         return avg_cv_loss
-    
+
+    def validate_pesq(self, net, cv_loader, feeder, resynthesizer, logger):
+        """
+        PESQ Validation on full validation set
+        Returns average PESQ score across all samples
+        """
+        if not PESQ_AVAILABLE:
+            logger.warning('PESQ not available. Skipping PESQ validation.')
+            return -1.0
+
+        model = net.module if isinstance(net, DataParallel) else net
+        model.eval()
+
+        pesq_scores = []
+        n_samples_processed = 0
+        n_errors = 0
+
+        logger.info('Computing PESQ on validation set...')
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(cv_loader):
+                mix = batch['mix'].to(self.device)
+                sph = batch['sph'].to(self.device)
+                n_samples = batch['n_samples']
+
+                # Forward pass
+                feat, lbl = feeder(mix, sph)
+                est = model(feat, global_step=None)
+
+                # Resynthesize audio
+                sph_est = resynthesizer(est, mix)
+
+                # Process each sample in batch
+                batch_size = mix.shape[0]
+                for i in range(batch_size):
+                    # Get actual length
+                    if isinstance(n_samples, torch.Tensor):
+                        if n_samples.ndim == 0:
+                            actual_len = n_samples.item()
+                        else:
+                            actual_len = n_samples[i].item()
+                    else:
+                        actual_len = int(n_samples)
+
+                    # Get clean and enhanced audio, trim to actual length
+                    clean_audio = sph[i].cpu().numpy()[:actual_len]
+                    est_audio = sph_est[i].cpu().numpy()[:actual_len]
+
+                    # Compute PESQ (wideband mode for 16kHz)
+                    try:
+                        score = pesq(self.sample_rate, clean_audio, est_audio, 'wb')
+                        pesq_scores.append(score)
+                        n_samples_processed += 1
+                    except Exception as e:
+                        n_errors += 1
+                        if n_errors <= 3:  # Only log first 3 errors
+                            logger.warning(f'PESQ error on sample {n_samples_processed}: {e}')
+
+                # Progress logging every 50 batches
+                if (batch_idx + 1) % 50 == 0:
+                    logger.info(f'  Processed {n_samples_processed} samples...')
+
+        if len(pesq_scores) == 0:
+            logger.error('No valid PESQ scores computed!')
+            return -1.0
+
+        avg_pesq = np.mean(pesq_scores)
+        logger.info(f'PESQ Results: avg={avg_pesq:.4f}, samples={n_samples_processed}, errors={n_errors}')
+
+        return avg_pesq
+
     def test(self):
         """
         Testing procedure - WITH PADDING FIX
