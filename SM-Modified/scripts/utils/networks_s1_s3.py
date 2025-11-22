@@ -43,40 +43,48 @@ class AdaptiveFrequencyBandPositionalEncoding(nn.Module):
         return nn.Parameter(pe_fixed + pe_residual, requires_grad=True)
 
     def forward(self, X):
-        batch_size, C, freq_bins, T = X.size()
+        # X shape: [B, C, T, F] where T=time, F=frequency
+        batch_size, C, T, freq_bins = X.size()  # FIXED: was incorrectly (C, freq_bins, T)
         device = X.device
         nyquist = self.sample_rate / 2
         current_low = int(freq_bins * (self.low_freq_range[1] / nyquist))
         current_mid = int(freq_bins * (self.mid_freq_range[1] / nyquist)) - current_low
         current_high = freq_bins - (current_low + current_mid)
 
-        pe_adaptive = torch.zeros(batch_size, C, freq_bins, T, device=device)
+        # PE shape: [B, C, T, F] - applied to frequency dimension (dim 3)
+        pe_adaptive = torch.zeros(batch_size, C, T, freq_bins, device=device)
 
         if self.pe_low is not None and current_low > 0:
             pe_low = F.interpolate(self.pe_low.unsqueeze(0).unsqueeze(0), size=current_low, mode='linear', align_corners=False)
-            pe_low = pe_low.unsqueeze(-1)
-            pe_adaptive[:, :, :current_low, :] = pe_low.expand(batch_size, C, current_low, T)
+            pe_low = pe_low.unsqueeze(2)  # Add time dimension at dim 2
+            # FIXED: Apply to dim 3 (frequency), not dim 2 (time)
+            pe_adaptive[:, :, :, :current_low] = pe_low.expand(batch_size, C, T, current_low)
 
         if self.pe_mid is not None and current_mid > 0:
             pe_mid = F.interpolate(self.pe_mid.unsqueeze(0).unsqueeze(0), size=current_mid, mode='linear', align_corners=False)
-            pe_mid = pe_mid.unsqueeze(-1)
-            pe_adaptive[:, :, current_low:current_low + current_mid, :] = pe_mid.expand(batch_size, C, current_mid, T)
+            pe_mid = pe_mid.unsqueeze(2)
+            # FIXED: Apply to dim 3 (frequency), not dim 2 (time)
+            pe_adaptive[:, :, :, current_low:current_low + current_mid] = pe_mid.expand(batch_size, C, T, current_mid)
 
         if self.pe_high is not None and current_high > 0:
             pe_high = F.interpolate(self.pe_high.unsqueeze(0).unsqueeze(0), size=current_high, mode='linear', align_corners=False)
-            pe_high = pe_high.unsqueeze(-1)
-            pe_adaptive[:, :, current_low + current_mid:, :] = pe_high.expand(batch_size, C, current_high, T)
+            pe_high = pe_high.unsqueeze(2)
+            # FIXED: Apply to dim 3 (frequency), not dim 2 (time)
+            pe_adaptive[:, :, :, current_low + current_mid:] = pe_high.expand(batch_size, C, T, current_high)
 
         return pe_adaptive
 
 
 class DepthwiseFrequencyAttention(nn.Module):
+    """Applies attention along the FREQUENCY dimension (dim 3)."""
     def __init__(self, in_channels, kernel_size=5):
         super().__init__()
-        self.dw_conv = nn.Conv2d(in_channels, in_channels, kernel_size=(kernel_size, 1), padding=(kernel_size//2, 0), groups=in_channels)
+        # FIXED: kernel (1, kernel_size) operates on dim 3 (frequency), not dim 2 (time)
+        self.dw_conv = nn.Conv2d(in_channels, in_channels, kernel_size=(1, kernel_size), padding=(0, kernel_size//2), groups=in_channels)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
+        # x: [B, C, T, F] - attention computed along F (frequency)
         return x * self.sigmoid(self.dw_conv(x))
 
 
