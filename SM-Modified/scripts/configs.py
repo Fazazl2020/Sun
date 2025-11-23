@@ -18,7 +18,8 @@ from pathlib import Path
 # ============================================================
 
 # Choose experiment: 'S1', 'S2', 'S3', or 'S4'
-EXPERIMENT = 'S1'
+# Using S2 (F=201) - best performing config with critical fix applied
+EXPERIMENT = 'S2'
 
 # Experiment definitions
 EXPERIMENTS = {
