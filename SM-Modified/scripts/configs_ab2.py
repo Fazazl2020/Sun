@@ -1,24 +1,17 @@
 """
-configs_ab2.py - Ablation 2: InstanceNorm Fix + Residual Connection
-====================================================================
-BEFORE RUNNING:
-  cp utils/networks_ab2.py utils/networks.py
-
-This ablation tests InstanceNorm fix + residual connection.
-Network: networks_ab2.py (with residual: output = input + decoded)
+configs.py - Configuration File
+================================
+Ab2: InstanceNorm fix + Residual connection
+Use with: networks.py (with residual: output = input + decoded)
 """
 
 import os
 from pathlib import Path
 
 # ============================================================
-# ==================== ABLATION CONFIGURATION ================
+# ==================== EXPERIMENT SELECTION ==================
 # ============================================================
 
-ABLATION_NAME = 'Ab2-Residual'
-ABLATION_DESC = 'InstanceNorm fix + Residual connection (output = input + decoded)'
-
-# Using S2 config (F=201) - best performing
 EXPERIMENT = 'S2'
 
 EXPERIMENTS = {
@@ -47,7 +40,7 @@ VALID_NOISY_SUBDIR = 'valid/noisy_valid'
 TEST_CLEAN_SUBDIR = 'Test/clean_test'
 TEST_NOISY_SUBDIR = 'Test/noisy_test'
 
-# ABLATION-SPECIFIC CHECKPOINT PATH
+# CHECKPOINT PATH - Change this for different experiments
 CHECKPOINT_ROOT = '/ghome/fewahab/Sun-Models/Mod-3/T71a1/scripts/ckpt_ab2'
 
 ESTIMATES_ROOT = '/gdata/fewahab/Sun-Models/Mod-3/T71a1/estimates_ab2'
@@ -164,8 +157,7 @@ def validate_path(path, path_type="directory"):
 
 def validate_data_dirs(mode='train'):
     print(f"\n{'='*60}")
-    print(f"ABLATION: {ABLATION_NAME}")
-    print(f"{ABLATION_DESC}")
+    print(f"VALIDATING DATA DIRECTORIES")
     print(f"{'='*60}")
 
     if mode in ['train', 'all']:
@@ -184,7 +176,5 @@ def validate_data_dirs(mode='train'):
     print(f"{'='*60}\n")
 
 print(f"\n{'='*60}")
-print(f"ABLATION: {ABLATION_NAME}")
-print(f"{ABLATION_DESC}")
 print(f"Checkpoint: {CHECKPOINT_ROOT}")
 print(f"{'='*60}\n")

@@ -1,16 +1,13 @@
 """
-networks_ab2.py - Network with Residual Connection (Ab2)
-=========================================================
-Key fixes applied:
-1. FAC dimension fix: PE now correctly applies to frequency dim (dim 3)
-2. DepthwiseFrequencyAttention: kernel now operates on frequency dim
-3. CRITICAL: Removed InstanceNorm from final output layer (like DCCRN/CMGAN)
-4. ABLATION Ab2: Added residual connection (output = input + decoded)
+networks.py - Speech Enhancement Network
+=========================================
+Fixes applied:
+1. FAC dimension fix: PE correctly applies to frequency dim (dim 3)
+2. DepthwiseFrequencyAttention: kernel operates on frequency dim
+3. No InstanceNorm on final output layer (like DCCRN/CMGAN)
+4. Residual connection: output = input + decoded
 
-The network learns the RESIDUAL (correction needed) instead of full spectrum.
-This is similar to how DCCRN and other successful models work.
-
-Configuration: F=201 (best performing S2 config)
+Configuration: F=201 (win=400, hop=100)
 """
 
 import torch
@@ -242,15 +239,14 @@ class AIA_Transformer(nn.Module):
 
 class Net(nn.Module):
     """
-    Speech Enhancement Network with FAC + Residual Connection (Ab2)
+    Speech Enhancement Network with FAC + Residual Connection
 
-    CRITICAL FIX: No normalization on final output layer (like DCCRN/CMGAN)
-    ABLATION Ab2: Residual connection - output = input + decoded
+    Features:
+    - No normalization on final output layer (like DCCRN/CMGAN)
+    - Residual connection: output = input + decoded
+    - Network learns the CORRECTION needed, not full spectrum
 
-    The network learns to predict the CORRECTION needed, not the full spectrum.
-    This makes learning easier as it only needs to model the difference.
-
-    Config: F=201 (win=400, hop=100) - best performing S2 configuration
+    Config: F=201 (win=400, hop=100)
     """
     def __init__(self, F=201):
         super().__init__()
@@ -314,9 +310,8 @@ class Net(nn.Module):
         d2 = self.elu(self.bn2_t(F.pad(self.de2(out), [0,0,1,0])))
         out = torch.cat([d2, e1], dim=1)
 
-        # CRITICAL: Final output has NO normalization, NO activation (like DCCRN/CMGAN)
+        # Final output: NO normalization, NO activation (like DCCRN/CMGAN)
         d1 = F.pad(self.de1(out), [0,0,1,0])
 
-        # ABLATION Ab2: Residual connection - network learns the correction/residual
-        # output = input + decoded (network predicts what to ADD to noisy input)
+        # Residual connection: output = input + correction
         return x + d1
