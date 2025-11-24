@@ -270,15 +270,16 @@ class AIA_Transformer_Sequential(nn.Module):
     Attention-in-Attention Transformer with Sequential T-F processing
 
     FULL FIXES:
-    2. Time and frequency positional encoding
+    2. Time and frequency positional encoding (dynamic sinusoidal)
     4. Sequential processing: Frequency first, then Time
        - Time attention now sees frequency-contextualized features
        - Better information flow for speech (formant trajectories)
     """
-    def __init__(self, input_size, output_size, dropout=0.1, max_time=500, max_freq=50):
+    def __init__(self, input_size, output_size, dropout=0.1):
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
+        self.hidden_size = input_size // 2
 
         self.input = nn.Sequential(
             nn.Conv2d(input_size, input_size//2, kernel_size=1),
@@ -304,17 +305,35 @@ class AIA_Transformer_Sequential(nn.Module):
         )
 
         # ===========================================
-        # FIX 2: Time and Frequency Positional Encoding
+        # FIX 2: Learnable scale for sinusoidal PE
         # ===========================================
-        self.time_pe = nn.Parameter(torch.randn(1, input_size//2, max_time, 1) * 0.02)
-        self.freq_pe = nn.Parameter(torch.randn(1, input_size//2, 1, max_freq) * 0.02)
+        # Dynamic sinusoidal PE works for ANY input length
+        self.pe_scale = nn.Parameter(torch.tensor(0.1))
+
+    def _get_sinusoidal_pe(self, length, channels, device):
+        """Generate sinusoidal positional encoding for any length"""
+        position = torch.arange(length, device=device).float().unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, channels, 2, device=device).float() * (-math.log(10000.0) / channels)
+        )
+        pe = torch.zeros(length, channels, device=device)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        return pe
 
     def forward(self, x):
         B, C, d2, d1 = x.shape  # d2=time, d1=freq
         x = self.input(x)
+        _, C_hidden, _, _ = x.shape
 
-        # FIX 2: Add positional encoding
-        x = x + self.time_pe[:, :, :d2, :] + self.freq_pe[:, :, :, :d1]
+        # FIX 2: Dynamic sinusoidal PE (works for any length)
+        time_pe = self._get_sinusoidal_pe(d2, C_hidden, x.device)
+        freq_pe = self._get_sinusoidal_pe(d1, C_hidden, x.device)
+
+        time_pe = time_pe.permute(1, 0).unsqueeze(0).unsqueeze(-1)
+        freq_pe = freq_pe.permute(1, 0).unsqueeze(0).unsqueeze(2)
+
+        x = x + self.pe_scale * (time_pe + freq_pe)
 
         # ===========================================
         # FIX 4: SEQUENTIAL processing (Freq -> Time)
