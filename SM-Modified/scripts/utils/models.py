@@ -474,6 +474,7 @@ class Model(object):
             lossLog(os.path.join(self.ckpt_dir, self.loss_log), ckpt, self.logging_period)
 
             # PESQ Validation (every N epochs)
+            # APPROACH D: Smart Periodic - Test PESQ on best.pt model, not current model
             current_epoch = ckpt_info['cur_epoch'] + 1  # 1-indexed for display
             if (self.pesq_eval_interval > 0 and
                 current_epoch % self.pesq_eval_interval == 0):
@@ -482,46 +483,76 @@ class Model(object):
                 logger.info(f'PESQ VALIDATION - Epoch {current_epoch}')
                 logger.info('='*70)
 
-                pesq_start_time = timeit.default_timer()
-                avg_pesq = self.validate_pesq(
-                    net, valid_loader, feeder, resynthesizer, logger
-                )
-                pesq_eval_time = timeit.default_timer() - pesq_start_time
+                # Load best model (by validation loss) for PESQ testing
+                best_model_path = os.path.join(self.ckpt_dir, 'models', 'best.pt')
 
-                # Check if best PESQ
-                is_best_pesq = avg_pesq > best_pesq
-                if is_best_pesq:
-                    improvement = avg_pesq - best_pesq
-                    logger.info(f'NEW BEST PESQ! {best_pesq:.4f} -> {avg_pesq:.4f} (+{improvement:.4f})')
-                    best_pesq = avg_pesq
-                    ckpt_info['best_pesq'] = best_pesq
+                if os.path.exists(best_model_path):
+                    logger.info('Loading best model (by cv_loss) for PESQ evaluation...')
 
-                    # Save best PESQ model
-                    if self.save_best_pesq_model:
-                        model_path = os.path.join(self.ckpt_dir, 'models')
-                        pesq_model_path = os.path.join(model_path, 'best_pesq.pt')
-                        if len(self.gpu_ids) > 1:
-                            pesq_ckpt = CheckPoint(
-                                ckpt_info, net.module.state_dict(),
-                                optimizer.state_dict(), scheduler.state_dict()
-                            )
-                        else:
-                            pesq_ckpt = CheckPoint(
-                                ckpt_info, net.state_dict(),
-                                optimizer.state_dict(), scheduler.state_dict()
-                            )
-                        torch.save(pesq_ckpt, pesq_model_path)
-                        logger.info(f'Saved best PESQ model to: {pesq_model_path}')
+                    # Load best checkpoint
+                    ckpt_best = CheckPoint()
+                    ckpt_best.load(best_model_path, self.device)
 
-                # Log PESQ results
-                pesqLog(
-                    os.path.join(self.ckpt_dir, self.pesq_log),
-                    current_epoch, avg_pesq, best_pesq,
-                    len(valid_loader.dataset), pesq_eval_time
-                )
-                logger.info(f'PESQ: {avg_pesq:.4f} | Best PESQ: {best_pesq:.4f} | '
-                           f'Time: {pesq_eval_time:.1f}s')
-                logger.info('='*70 + '\n')
+                    # Create temporary model with best weights
+                    net_best = Net(F=self.F).to(self.device)
+
+                    # Load state dict (handle DataParallel case)
+                    if len(self.gpu_ids) > 1:
+                        # Add 'module.' prefix for DataParallel
+                        state_dict = {}
+                        for key in ckpt_best.net_state_dict:
+                            state_dict['module.' + key] = ckpt_best.net_state_dict[key]
+                        net_best = DataParallel(net_best, device_ids=self.gpu_ids)
+                        net_best.load_state_dict(state_dict)
+                    else:
+                        net_best.load_state_dict(ckpt_best.net_state_dict)
+
+                    best_epoch = ckpt_best.ckpt_info['cur_epoch'] + 1
+                    best_cv_loss = ckpt_best.ckpt_info['best_loss']
+                    logger.info(f'Testing best model from epoch {best_epoch} '
+                               f'(cv_loss={best_cv_loss:.4f})')
+
+                    # Test PESQ on best model (not current model!)
+                    pesq_start_time = timeit.default_timer()
+                    avg_pesq = self.validate_pesq(
+                        net_best, valid_loader, feeder, resynthesizer, logger
+                    )
+                    pesq_eval_time = timeit.default_timer() - pesq_start_time
+
+                    # Check if best PESQ
+                    is_best_pesq = avg_pesq > best_pesq
+                    if is_best_pesq:
+                        improvement = avg_pesq - best_pesq
+                        logger.info(f'NEW BEST PESQ! {best_pesq:.4f} -> {avg_pesq:.4f} (+{improvement:.4f})')
+                        best_pesq = avg_pesq
+                        ckpt_info['best_pesq'] = best_pesq
+
+                        # Save best PESQ model (use the loaded best model, not current net)
+                        if self.save_best_pesq_model:
+                            model_path = os.path.join(self.ckpt_dir, 'models')
+                            pesq_model_path = os.path.join(model_path, 'best_pesq.pt')
+                            # Save the best model we just tested
+                            torch.save(ckpt_best, pesq_model_path)
+                            logger.info(f'Saved best PESQ model to: {pesq_model_path}')
+                            logger.info(f'  (Model from epoch {best_epoch} with cv_loss={best_cv_loss:.4f})')
+
+                    # Log PESQ results
+                    pesqLog(
+                        os.path.join(self.ckpt_dir, self.pesq_log),
+                        current_epoch, avg_pesq, best_pesq,
+                        len(valid_loader.dataset), pesq_eval_time
+                    )
+                    logger.info(f'PESQ on best.pt (epoch {best_epoch}): {avg_pesq:.4f} | '
+                               f'Best PESQ overall: {best_pesq:.4f} | Time: {pesq_eval_time:.1f}s')
+                    logger.info('='*70 + '\n')
+
+                    # Clean up temporary model
+                    del net_best
+
+                else:
+                    logger.warning(f'Best model not found at {best_model_path}')
+                    logger.warning('Skipping PESQ evaluation (will try next interval)')
+                    logger.info('='*70 + '\n')
 
             # Next epoch
             ckpt_info['cur_epoch'] += 1
